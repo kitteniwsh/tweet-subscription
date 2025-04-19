@@ -1,21 +1,30 @@
-const express = require('express');
-const path = require('path');
-const indexRouter = require('./routes/index');
+import express from "express";
+import dotenv from "dotenv";
 
+dotenv.config();
 const app = express();
-const PORT = 3000;
+app.use(express.json());
 
-// Serve static files from the "public" directory
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Use the router for handling routes
-app.use('/', indexRouter);
-
-// Catch-all route for handling 404 errors
-app.use((req, res, next) => {
-    res.status(404).sendFile(path.join(__dirname, 'views', '404.html'));
+app.post("/webhook", async (req, res) => {
+    try {
+      const { signature, amount, to } = req.body; // shape depends on provider
+      console.log(`incoming payment of ${amount} lamports to ${to}`);
+      // you can optionally verify signature or secret header here
+  
+      // now update Supabase: e.g., record the payment or bump tier
+      const { data, error } = await supabase
+        .from("payments")
+        .insert([{ signature, amount, to, received_at: new Date().toISOString() }]);
+  
+      if (error) throw error;
+  
+      res.status(200).send({ status: "ok" });
+    } catch (err) {
+      console.error("webhook error:", err);
+      res.status(500).send({ error: err.message });
+    }
   });
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}/`);
-});
+
+
+const PORT = process.env.PORT || 3000;
