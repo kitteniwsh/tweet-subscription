@@ -12,11 +12,18 @@
 // app.js
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const fs   = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 // init Express
 const app = express();
 app.use(express.json());
+const logStream = fs.createWriteStream(
+  path.join(__dirname, 'requests.log'),
+  { flags: 'a' }
+);
+
 
 // init Supabase
 const supabase = createClient(
@@ -40,6 +47,14 @@ const THRESHOLDS = [
   { amount: 5_000_000, tier: '3' }, // 0.005 SOL
   { amount: 10_000_000, tier: '4' }   // 0.01 SOL
 ];
+
+
+app.use((req, res, next) => {
+  if (req.method === 'POST') {
+    console.log(`[${new Date().toISOString()}] ${req.originalUrl}`, req.body);
+  }
+  next();
+});
 
 app.post('/webhook', async (req, res) => {
 
