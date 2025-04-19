@@ -44,6 +44,7 @@ const THRESHOLDS = [
 app.post('/webhook', async (req, res) => {
 
   console.log("Recieved crao");
+  console.log(req.body);
   try {
     const { nativeTransfers = [] } = req.body;
     
