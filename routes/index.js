@@ -1,10 +1,7 @@
-const express = require('express');
-const path = require('path');
-const router = express.Router();
+// index.js
+const app = require('./app');
+const PORT = process.env.PORT || 3000;
 
-// Serve the index.html file for the root route
-router.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '../views/index.html'));
+app.listen(PORT, () => {
+  console.log(`listening on port ${PORT} – POST your webhook to http://localhost:${PORT}/webhook`);
 });
-
-module.exports = router;

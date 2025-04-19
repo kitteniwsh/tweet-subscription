@@ -1,30 +1,22 @@
-import express from "express";
-import dotenv from "dotenv";
-
+// app.js
+const express = require('express');
+const dotenv  = require('dotenv');
 dotenv.config();
+
 const app = express();
+
+// parse JSON bodies for webhook
 app.use(express.json());
 
-app.post("/webhook", async (req, res) => {
-    try {
-      const { signature, amount, to } = req.body; // shape depends on provider
-      console.log(`incoming payment of ${amount} lamports to ${to}`);
-      // you can optionally verify signature or secret header here
-  
-      // now update Supabase: e.g., record the payment or bump tier
-      const { data, error } = await supabase
-        .from("payments")
-        .insert([{ signature, amount, to, received_at: new Date().toISOString() }]);
-  
-      if (error) throw error;
-  
-      res.status(200).send({ status: "ok" });
-    } catch (err) {
-      console.error("webhook error:", err);
-      res.status(500).send({ error: err.message });
-    }
-  });
+// webhook endpoint – logs whatever Helius (or any) sends
+app.post('/webhook', (req, res) => {
+  console.log('🌟 webhook payload:', JSON.stringify(req.body, null, 2));
+  res.status(200).send('ok');
+});
 
+// catch‑all for other routes
+app.use((req, res) => {
+  res.status(404).send('not found');
+});
 
-
-const PORT = process.env.PORT || 3000;
+module.exports = app;
