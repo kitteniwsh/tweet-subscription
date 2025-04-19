@@ -6,7 +6,9 @@
   "author": "alphasec",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "dotenv": "^16.0.0",
+    "@supabase/supabase-js": "^2.0.0"
   },
   "scripts": {
     "start": "node app.js"
