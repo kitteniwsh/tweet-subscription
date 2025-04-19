@@ -1,5 +1,4 @@
 // project structure:
-//
 // .env
 // app.js
 // index.js
@@ -11,19 +10,31 @@
 
 // app.js
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 require('dotenv').config();
 
 // init Express
 const app = express();
+// parse JSON bodies
 app.use(express.json());
+
+// setup logging: write all POST request bodies to requests.log
 const logStream = fs.createWriteStream(
   path.join(__dirname, 'requests.log'),
   { flags: 'a' }
 );
-
+app.use((req, res, next) => {
+  if (req.method === 'POST') {
+    // dump entire body as JSON string
+    const entry = `[${new Date().toISOString()}] ${req.originalUrl}\n` +
+                  JSON.stringify(req.body, null, 2) + '\n';
+    logStream.write(entry);
+    console.log(entry);  // also print to stdout for Railway logs
+  }
+  next();
+});
 
 // init Supabase
 const supabase = createClient(
@@ -40,60 +51,51 @@ if (!SERVICE_WALLET) {
   throw new Error('Missing SERVICE_WALLET in .env');
 }
 
-// pricing thresholds (in lamports)
-// 1 SOL = 1_000_000_000 lamports
+// pricing thresholds (in lamports) with numeric tiers matching smallint column
 const THRESHOLDS = [
-  { amount: 1_000_000, tier: '2' },    // 0.001 SOL
-  { amount: 5_000_000, tier: '3' }, // 0.005 SOL
-  { amount: 10_000_000, tier: '4' }   // 0.01 SOL
+  { amount: 1_000_000, tierValue: 1, label: 'low' },    // 0.001 SOL
+  { amount: 5_000_000, tierValue: 2, label: 'medium' }, // 0.005 SOL
+  { amount: 10_000_000, tierValue: 3, label: 'high' }   // 0.01 SOL
 ];
 
-
-app.use((req, res, next) => {
-  if (req.method === 'POST') {
-    console.log(`[${new Date().toISOString()}] ${req.originalUrl}`, req.body);
-  }
-  next();
-});
-
 app.post('/webhook', async (req, res) => {
-
-  console.log("Recieved crao");
-  console.log('🌟 webhook payload:', JSON.stringify(req.body, null, 2));
   try {
-    const { nativeTransfers = [] } = req.body;
-    
-    for (const transfer of nativeTransfers) {
-      console.log(transfer);
-      const { amount, fromUserAccount, toUserAccount } = transfer;
-      // only process payments into your service wallet
-      if (toUserAccount !== SERVICE_WALLET) continue;
+    // support payloads where req.body is an array or single object
+    const payloads = Array.isArray(req.body) ? req.body : [req.body];
+    for (const item of payloads) {
+      const nativeTransfers = item.nativeTransfers || [];
+      for (const transfer of nativeTransfers) {
+        const { amount, fromUserAccount, toUserAccount } = transfer;
+        // only process payments into your service wallet
+        if (toUserAccount !== SERVICE_WALLET) continue;
 
-      // find the highest threshold <= amount
-      const tierEntry = THRESHOLDS
-        .filter(t => amount >= t.amount)
-        .sort((a, b) => b.amount - a.amount)[0];
+        // find the highest threshold <= amount
+        const tierEntry = THRESHOLDS
+          .filter(t => amount >= t.amount)
+          .sort((a, b) => b.amount - a.amount)[0];
 
-      if (!tierEntry) {
-        console.log(`received ${amount} lamports from ${fromUserAccount} (below minimum)`);
-        continue;
-      }
+        if (!tierEntry) {
+          console.log(`received ${amount} lamports from ${fromUserAccount} (below minimum)`);
+          continue;
+        }
 
-      // compute new expiry one month from now
-      const expiry = new Date();
-      expiry.setMonth(expiry.getMonth() + 1);
-      const expiryISO = expiry.toISOString();
+        const { tierValue, label } = tierEntry;
+        // compute new expiry one month from now
+        const expiry = new Date();
+        expiry.setMonth(expiry.getMonth() + 1);
+        const expiryISO = expiry.toISOString();
 
-      // update user in Supabase by matching their public key
-      const { data, error } = await supabase
-        .from('users')
-        .update({ tier: tierEntry.tier, subscription_expiry: expiryISO })
-        .eq('pubkey', fromUserAccount);
+        // update user in Supabase by matching their public key
+        const { data, error } = await supabase
+          .from('users')
+          .update({ tier: tierValue, subscription_expiry: expiryISO })
+          .eq('pubkey', fromUserAccount);
 
-      if (error) {
-        console.error('supabase update error:', error);
-      } else {
-        console.log(`upgraded ${fromUserAccount} to '${tierEntry.tier}' until ${expiryISO}`);
+        if (error) {
+          console.error(`supabase update error for ${fromUserAccount}:`, error);
+        } else {
+          console.log(`upgraded ${fromUserAccount} to tier ${tierValue} (${label}) until ${expiryISO}`);
+        }
       }
     }
     res.sendStatus(200);
@@ -104,3 +106,4 @@ app.post('/webhook', async (req, res) => {
 });
 
 module.exports = app;
+
